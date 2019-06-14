@@ -835,56 +835,54 @@ function wf_crm_update_existing_component(&$component, $enabled, $data) {
  *
  * @return array
  */
-function wf_crm_find_relations($cid, $types = array(), $current = TRUE) {
-  $found = $allowed = array();
-  $cid = (int) $cid;
-  static $employer_type = 0;
-  if ($cid) {
-    if (!$employer_type && $current) {
-      $employer_type = CRM_Core_DAO::singleValueQuery("SELECT id FROM civicrm_relationship_type WHERE name_a_b = 'Employee of'");
+/**
+ * Get a contact's relations of certain types
+ *
+ * @param int cid
+ *   Contact id
+ * @param array types
+ *   Array of relationship_type_ids
+ * @param bool $current
+ *   Limit to current & enabled relations?
+ *
+ * @return array
+ */
+function wf_crm_find_relations($cid, $types = [], $current = TRUE) {
+  $found = $aParams = $bParams = $aTypeIds = $bTypeIds = [];
+  if ($current) {
+    $aParams['is_active'] = 1;
+    $bParams['is_active'] = 1;
+  }
+  if (!empty($types)) {
+    foreach($types as $type)
+      list($typeId,$direction) = explode('_', $type);
+    if($direction == 'a' || $direction == 'r'){
+      $aTypeIds[] = $typeId;
     }
-    $type_ids = '';
-    foreach ($types as $t) {
-      list($type, $a_b) = explode('_', $t);
-      // Put current employer first in the list
-      if ($type == $employer_type && $current) {
-        $sql = "SELECT id, employer_id
-        FROM civicrm_contact
-        WHERE id = $cid OR employer_id = $cid";
-        $dao = CRM_Core_DAO::executeQuery($sql);
-        $employer = $dao->id == $cid ? $dao->employer_id : $dao->id;
-        while ($dao->fetch()) {
-          $found[$employer] = $employer;
-        }
-        $dao->free();
-      }
-      $type_ids .= ($type_ids ? ',' : '') . $type;
-      if ($a_b == 'a' || $a_b == 'r') {
-        $allowed[] = $type . '_a';
-      }
-      if ($a_b == 'b' || $a_b == 'r') {
-        $allowed[] = $type . '_b';
-      }
+    if($direction == 'b' || $direction == 'r'){
+      $bTypeIds[] = $typeId;
     }
-    $typeClause = '';
-    if ($type_ids) {
-      $typeClause = "AND relationship_type_id IN ($type_ids)";
+  }
+  if(!empty($aTypeIds)){
+    $aParams['relationship_type_id'] = ['IN' => $aTypeIds];
+  }
+  if(!empty($bTypeIds)){
+    $bParams['relationship_type_id'] = ['IN' => $bTypeIds];
+  }
+  $relationshipsA = wf_civicrm_api('Relationship', 'Get', $aParams + [
+      'contact_id_a' => $cid,
+    ])['values'];
+  $relationshipsB = wf_civicrm_api('Relationship', 'Get', $bParams + [
+      'contact_id_b' => $cid,
+    ]) ['values'];
+  $relationships = array_merge($relationshipsA, $relationshipsB);
+  // renumber
+  foreach ($relationships as $r) {
+    // remove not current after the api call
+    if (!$current || (!isset($r['end_date']) || $r['end_date'] >= date('Y-m-d'))) {
+      $opposite = $r['contact_id_a'] == $cid ? $r['contact_id_b'] : $r['contact_id_a'];
+      $found[$opposite] = $opposite;
     }
-    $sql = "SELECT relationship_type_id, contact_id_a, contact_id_b
-      FROM civicrm_relationship
-      WHERE (contact_id_a = $cid OR contact_id_b = $cid) $typeClause";
-    if ($current) {
-      $sql .= " AND is_active = 1 AND (end_date > CURDATE() OR end_date IS NULL)";
-    }
-    $dao = CRM_Core_DAO::executeQuery($sql);
-    while ($dao->fetch()) {
-      $a_b = $dao->contact_id_a == $cid ? 'b' : 'a';
-      if (!$allowed || in_array($dao->relationship_type_id . '_' . $a_b, $allowed)) {
-        $c = $dao->{"contact_id_$a_b"};
-        $found[$c] = $c;
-      }
-    }
-    $dao->free();
   }
   return $found;
 }
