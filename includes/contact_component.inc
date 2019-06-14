@@ -835,18 +835,6 @@ function wf_crm_update_existing_component(&$component, $enabled, $data) {
  *
  * @return array
  */
-/**
- * Get a contact's relations of certain types
- *
- * @param int cid
- *   Contact id
- * @param array types
- *   Array of relationship_type_ids
- * @param bool $current
- *   Limit to current & enabled relations?
- *
- * @return array
- */
 function wf_crm_find_relations($cid, $types = [], $current = TRUE) {
   $found = $aParams = $bParams = $aTypeIds = $bTypeIds = [];
   if ($current) {
